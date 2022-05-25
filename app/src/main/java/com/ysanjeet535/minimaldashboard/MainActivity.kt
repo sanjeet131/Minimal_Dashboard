@@ -3,6 +3,7 @@ package com.ysanjeet535.minimaldashboard
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -12,10 +13,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
+import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,35 +33,49 @@ import java.util.*
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val callback: OnBackPressedCallback = object : OnBackPressedCallback(
+            true // default to enabled
+        ) {
+            override fun handleOnBackPressed() {
+                //doing nothing
+            }
+        }
+        this.onBackPressedDispatcher.addCallback(
+            this,  // LifecycleOwner
+            callback
+        )
+
+
         setContent {
             MinimalDashboardTheme {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black)
+                        .background(MaterialTheme.colors.surface)
                 ) {
                     val i = Intent(Intent.ACTION_MAIN, null)
                     i.addCategory(Intent.CATEGORY_LAUNCHER)
                     val list = packageManager.queryIntentActivities(i, 0)
-                    
+
                     Column(modifier = Modifier.padding(32.dp)) {
-                        Text(text = "CUSTOM TATTI LAUNCHER", color = Color.White)
-                        
+                        Text(text = "Minimalist", color = Color.White)
+
                         Spacer(modifier = Modifier.height(64.dp))
-                        
-                        
+
+
                         Text(text = "${Calendar.getInstance().time}", color = Color.White)
 
 
                         Spacer(modifier = Modifier.height(64.dp))
-                        
-                        
+
+
 
 
                         LazyColumn(
                             modifier = Modifier
                                 .padding(16.dp)
-                                .height(240.dp)
+                                .height(440.dp)
                                 .fillMaxWidth()
                         ) {
                             items(list) { item ->
@@ -87,15 +105,17 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                        
-                        Spacer(modifier = Modifier.height(240.dp))
-
-                        IconButton(onClick = {  }) {
-                            Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.background(Color.White))
+                        IconButton(onClick = {
+                        }) {
+                            Icon(
+                                Icons.Default.Phone,
+                                contentDescription = null,
+                                modifier = Modifier.background(Color.White)
+                            )
                         }
-                        
-                    }
 
+
+                    }
 
 
                 }
@@ -104,6 +124,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 
 @Composable
 fun Greeting(name: String, onClick: () -> Unit) {
