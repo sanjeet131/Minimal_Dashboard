@@ -1,5 +1,6 @@
 package com.ysanjeet535.minimaldashboard
 
+import android.app.SearchManager
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -106,6 +107,9 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         IconButton(onClick = {
+                            val intent = Intent(Intent.ACTION_WEB_SEARCH)
+                            intent.putExtra(SearchManager.QUERY, "term")
+                            startActivity(intent)
                         }) {
                             Icon(
                                 Icons.Default.Phone,
