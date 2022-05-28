@@ -1,9 +1,19 @@
 package com.ysanjeet535.minimaldashboard
 
+import android.app.AppOpsManager
+import android.app.AppOpsManager.MODE_ALLOWED
+import android.app.AppOpsManager.OPSTR_GET_USAGE_STATS
+import android.app.usage.UsageStats
+import android.app.usage.UsageStatsManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.os.Build
 import android.os.Bundle
+import android.os.Process
+import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -21,11 +31,8 @@ import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,24 +40,20 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.ysanjeet535.minimaldashboard.ui.theme.MinimalDashboardTheme
+import java.util.*
+import java.util.concurrent.TimeUnit
 
 
 class MainActivity : ComponentActivity() {
+
+    private var usageStats: List<UsageStats>? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val callback: OnBackPressedCallback = object : OnBackPressedCallback(
-            true // default to enabled
-        ) {
-            override fun handleOnBackPressed() {
-                //doing nothing
-            }
+        val callback: OnBackPressedCallback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {}
         }
-        this.onBackPressedDispatcher.addCallback(
-            this,  // LifecycleOwner
-            callback
-        )
-
+        this.onBackPressedDispatcher.addCallback(this, callback)
 
         setContent {
             MinimalDashboardTheme {
@@ -61,8 +64,10 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val launchIntent = Intent(Intent.ACTION_MAIN, null)
                     launchIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+                    usageStats = remember { fetchUsageStats() }
                     AppListContent(
                         packageManager = packageManager,
+                        usageStats = usageStats,
                         intent = launchIntent
                     ) { intent ->
                         if (intent != null) {
@@ -74,36 +79,94 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun fetchUsageStats(): List<UsageStats>? {
+        return if (checkForPermission(context = this)) {
+            val cal = Calendar.getInstance()
+            cal.add(Calendar.DAY_OF_MONTH, -1)
+            val usageStatsManager =
+                this.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            usageStatsManager.queryUsageStats(
+                UsageStatsManager.INTERVAL_DAILY,
+                cal.timeInMillis,
+                System.currentTimeMillis()
+            )
+        } else {
+            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+            null
+        }
+    }
+
+    private fun checkForPermission(context: Context): Boolean {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode =
+            appOps.checkOpNoThrow(OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
+        return mode == MODE_ALLOWED
+    }
+
 }
+
 
 @Composable
 fun AppListContent(
     packageManager: PackageManager,
+    usageStats: List<UsageStats>?,
     intent: Intent,
     onAppItemClicked: (Intent?) -> Unit
 ) {
     val list = packageManager.queryIntentActivities(intent, 0)
-
-    Column(modifier = Modifier.padding(32.dp)) {
-        val listState = rememberLazyListState()
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .padding(16.dp)
-                .height(440.dp)
-                .fillMaxWidth()
-        ) {
-            itemsIndexed(list) { index, item ->
-                AppListItem(
-                    item = item,
-                    packageManager = packageManager,
-                    onAppItemClicked = onAppItemClicked
-                )
-            }
+    val listState = rememberLazyListState()
+    val undiscoveredList by remember {
+        derivedStateOf {
+            list.subList(listState.firstVisibleItemIndex + 8, list.lastIndex)
         }
-        val undiscoveredList =
-            list.subList(listState.layoutInfo.visibleItemsInfo.size, list.size - 1)
-        InvisibleAppItemsTray(appList = undiscoveredList, packageManager = packageManager)
+    }
+
+    Column(
+        modifier = Modifier
+            .padding(32.dp)
+            .fillMaxHeight(),
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        MainAppColumn(
+            listState = listState,
+            appList = list,
+            usageStats = usageStats,
+            packageManager = packageManager,
+            onAppItemClicked = onAppItemClicked
+        )
+        InvisibleAppItemsTray(
+            appList = undiscoveredList,
+            packageManager = packageManager,
+            onAppItemClicked = onAppItemClicked
+        )
+    }
+}
+
+@Composable
+fun MainAppColumn(
+    listState: LazyListState,
+    appList: List<ResolveInfo>,
+    usageStats: List<UsageStats>?,
+    packageManager: PackageManager,
+    onAppItemClicked: (Intent?) -> Unit
+) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .padding(16.dp)
+            .height(440.dp)
+            .fillMaxWidth()
+    ) {
+        items(appList) { item ->
+            AppListItem(
+                item = item,
+                usageStats = usageStats,
+                packageManager = packageManager,
+                onAppItemClicked = onAppItemClicked
+            )
+        }
     }
 }
 
@@ -111,7 +174,8 @@ fun AppListContent(
 @Composable
 fun InvisibleAppItemsTray(
     appList: List<ResolveInfo>,
-    packageManager: PackageManager
+    packageManager: PackageManager,
+    onAppItemClicked: (Intent?) -> Unit
 ) {
     LazyRow {
         items(appList) { app ->
@@ -119,8 +183,11 @@ fun InvisibleAppItemsTray(
                 rememberDrawablePainter(app.loadIcon(packageManager)),
                 contentDescription = null,
                 modifier = Modifier
-                    .fillMaxWidth(0.9f)
+                    .size(48.dp)
                     .padding(8.dp)
+                    .clickable {
+                        onAppItemClicked(packageManager.getLaunchIntentForPackage(app.activityInfo.packageName))
+                    }
             )
         }
     }
@@ -131,18 +198,27 @@ fun InvisibleAppItemsTray(
 @Composable
 fun AppListItem(
     item: ResolveInfo,
+    usageStats: List<UsageStats>?,
     packageManager: PackageManager,
     onAppItemClicked: (Intent?) -> Unit
 ) {
+    val usageStat = remember {
+        getUsageStatForThePackage(item, usageStats)
+    }
+
+
     var isExpanded by rememberSaveable {
         mutableStateOf(false)
     }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Start
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Top
     ) {
-        Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start
+        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start,
@@ -169,24 +245,59 @@ fun AppListItem(
                 )
             }
 
-            AnimatedVisibility(visible = isExpanded) {
-                Text(
-                    modifier = Modifier
-                        .fillMaxWidth(0.9f),
-                    text = "When you scroll in LazyColumn, the composables that are no longer visible get removed from the composition tree and when you scroll back to them, they are composed again from scratch. That is why expanded is initialized to false again",
-                    color = Color.White
+            IconButton(onClick = { isExpanded = !isExpanded }) {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = Color.White
                 )
             }
         }
-        IconButton(onClick = { isExpanded = !isExpanded }) {
-            Icon(
-                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = Color.White
-            )
+
+        AnimatedVisibility(visible = isExpanded) {
+            AppMetaData(usageStat)
         }
     }
+}
 
+@Composable
+fun AppMetaData(stats: UsageStats?) {
+
+    Column {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MetaDataItem(
+                "Screen time today : ",
+                TimeUnit.MILLISECONDS.toMinutes(stats?.totalTimeVisible ?: 0).toString() + " minutes"
+            )
+            MetaDataItem(
+                "Last Used  : ",
+                TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - stats?.lastTimeStamp!!)
+                    .toString() + " seconds ago"
+            )
+
+        }
+    }
+}
+
+@Composable
+fun MetaDataItem(dataType: String, value: String) {
+    Row {
+        Text(text = dataType, color = Color.White)
+        Text(text = value, color = Color.White)
+    }
+}
+
+private fun getUsageStatForThePackage(
+    item: ResolveInfo,
+    usageStats: List<UsageStats>?
+): UsageStats? {
+    var value: UsageStats? = null
+    usageStats?.forEach {
+        Log.d("Check", "Assert : ${item.activityInfo.packageName} and ${it.packageName}")
+        if ((item.activityInfo.packageName).contains(it.packageName))
+            value = it
+    }
+    return value
 }
 
 
