@@ -13,7 +13,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -22,20 +21,23 @@ import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
-import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Text
+import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
@@ -47,6 +49,8 @@ import java.util.concurrent.TimeUnit
 class MainActivity : ComponentActivity() {
 
     private var usageStats: List<UsageStats>? = null
+
+    @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -57,10 +61,20 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MinimalDashboardTheme {
+                val keyboardController = LocalSoftwareKeyboardController.current
+                val focusManager = LocalFocusManager.current
+                val interactionSource = remember { MutableInteractionSource() }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(MaterialTheme.colors.surface)
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = null
+                        ) {
+                            keyboardController?.hide()
+                            focusManager.clearFocus(true)
+                        }
                 ) {
                     val launchIntent = Intent(Intent.ACTION_MAIN, null)
                     launchIntent.addCategory(Intent.CATEGORY_LAUNCHER)
@@ -121,6 +135,19 @@ fun AppListContent(
             list.subList(listState.firstVisibleItemIndex + 8, list.lastIndex)
         }
     }
+    var query by remember {
+        mutableStateOf(TextFieldValue(""))
+    }
+
+    val filteredList = list.filter {
+        it.loadLabel(packageManager).contains(query.text)
+    }
+
+    val appColumnList by remember {
+        derivedStateOf {
+            if (query.text.isNotBlank()) filteredList else list
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -129,11 +156,16 @@ fun AppListContent(
         verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        SearchField(query = query) {
+            query = it
+        }
+
         MainAppColumn(
             listState = listState,
-            appList = list,
+            appList = appColumnList,
             usageStats = usageStats,
             packageManager = packageManager,
+            filterQuery = query.text,
             onAppItemClicked = onAppItemClicked
         )
         InvisibleAppItemsTray(
@@ -150,6 +182,7 @@ fun MainAppColumn(
     appList: List<ResolveInfo>,
     usageStats: List<UsageStats>?,
     packageManager: PackageManager,
+    filterQuery: String,
     onAppItemClicked: (Intent?) -> Unit
 ) {
     LazyColumn(
@@ -159,7 +192,9 @@ fun MainAppColumn(
             .height(440.dp)
             .fillMaxWidth()
     ) {
-        items(appList) { item ->
+        items(items = appList.filter {
+            it.loadLabel(packageManager).toString().contains(filterQuery, ignoreCase = true)
+        }) { item ->
             AppListItem(
                 item = item,
                 usageStats = usageStats,
@@ -168,6 +203,26 @@ fun MainAppColumn(
             )
         }
     }
+}
+
+@Composable
+fun SearchField(query: TextFieldValue, onQueryChanged: (TextFieldValue) -> Unit) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChanged,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        leadingIcon = {
+            Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = Color.White)
+        },
+        colors = TextFieldDefaults.outlinedTextFieldColors(
+            textColor = Color.White,
+            cursorColor = Color.White,
+            focusedBorderColor = Color.White,
+            disabledBorderColor = Color.Transparent
+        )
+    )
 }
 
 
@@ -267,7 +322,8 @@ fun AppMetaData(stats: UsageStats?) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MetaDataItem(
                 "Screen time today : ",
-                TimeUnit.MILLISECONDS.toMinutes(stats?.totalTimeVisible ?: 0).toString() + " minutes"
+                TimeUnit.MILLISECONDS.toMinutes(stats?.totalTimeVisible ?: 0)
+                    .toString() + " minutes"
             )
             MetaDataItem(
                 "Last Used  : ",
@@ -293,7 +349,6 @@ private fun getUsageStatForThePackage(
 ): UsageStats? {
     var value: UsageStats? = null
     usageStats?.forEach {
-        Log.d("Check", "Assert : ${item.activityInfo.packageName} and ${it.packageName}")
         if ((item.activityInfo.packageName).contains(it.packageName))
             value = it
     }
