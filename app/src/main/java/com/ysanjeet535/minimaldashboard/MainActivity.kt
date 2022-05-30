@@ -80,8 +80,9 @@ class MainActivity : ComponentActivity() {
                             focusManager.clearFocus(true)
                         }
                 ) {
-                    val launchIntent = Intent(Intent.ACTION_MAIN, null)
-                    launchIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+                    val launchIntent = remember {
+                        Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+                    }
                     usageStats = remember { fetchUsageStats() }
                     AppListContent(
                         packageManager = packageManager,
@@ -132,19 +133,26 @@ fun AppListContent(
     intent: Intent,
     onAppItemClicked: (Intent?) -> Unit
 ) {
-    val list = packageManager.queryIntentActivities(intent, 0)
+    val list = remember {
+        packageManager.queryIntentActivities(intent, 0)
+    }
     val listState = rememberLazyListState()
+    //todo : Fix this undiscovered list should be calculated from last visible item
     val undiscoveredList by remember {
         derivedStateOf {
-            list.subList(listState.firstVisibleItemIndex + 8, list.lastIndex)
+            val startIndex =
+                if ((listState.firstVisibleItemIndex + 9) <= list.lastIndex) listState.firstVisibleItemIndex + 9 else list.lastIndex
+            list.subList(startIndex, list.lastIndex)
         }
     }
     var query by remember {
         mutableStateOf(TextFieldValue(""))
     }
 
-    val filteredList = list.filter {
-        it.loadLabel(packageManager).contains(query.text)
+    val filteredList = remember {
+        list.filter {
+            it.loadLabel(packageManager).contains(query.text)
+        }
     }
 
     val appColumnList by remember {
@@ -269,22 +277,11 @@ fun InvisibleAppItemsTray(
         items(
             appList,
             key = { it.iconResource.toString() + it.activityInfo.packageName + it.activityInfo.hashCode() }) { app ->
-            Image(
-                rememberDrawablePainter(app.loadIcon(packageManager)),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(48.dp)
-                    .padding(8.dp)
-                    .clickable {
-                        onAppItemClicked(packageManager.getLaunchIntentForPackage(app.activityInfo.packageName))
-                    }
-                    .animateItemPlacement(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing,
-                            delayMillis = 100
-                        )
-                    )
+            InvisibleAppItemsTrayItem(
+                app = app,
+                packageManager = packageManager,
+                scope = this,
+                onAppItemClicked = onAppItemClicked
             )
         }
     }
@@ -304,6 +301,41 @@ fun InvisibleAppItemsTray(
 
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun InvisibleAppItemsTrayItem(
+    app: ResolveInfo,
+    packageManager: PackageManager,
+    scope: LazyItemScope,
+    onAppItemClicked: (Intent?) -> Unit
+) {
+    val icon = remember {
+        app.loadIcon(packageManager)
+    }
+
+    val launchIntent = remember {
+        packageManager.getLaunchIntentForPackage(app.activityInfo.packageName)
+    }
+    scope.apply {
+        Image(
+            rememberDrawablePainter(icon),
+            contentDescription = null,
+            modifier = Modifier
+                .size(48.dp)
+                .padding(8.dp)
+                .clickable {
+                    onAppItemClicked(launchIntent)
+                }
+                .animateItemPlacement(
+                    animationSpec = tween(
+                        durationMillis = 50,
+                        easing = FastOutSlowInEasing,
+                    )
+                )
+        )
+    }
+}
+
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun AppListItem(
@@ -319,6 +351,18 @@ fun AppListItem(
 
     var isExpanded by rememberSaveable {
         mutableStateOf(false)
+    }
+
+    val icon = remember {
+        item.loadIcon(packageManager)
+    }
+
+    val appName = remember {
+        item.loadLabel(packageManager).toString()
+    }
+
+    val launchIntent = remember {
+        packageManager.getLaunchIntentForPackage(item.activityInfo.packageName)
     }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -336,10 +380,10 @@ fun AppListItem(
                     .fillMaxWidth(0.9f)
                     .padding(8.dp)
                     .clickable {
-                        onAppItemClicked(packageManager.getLaunchIntentForPackage(item.activityInfo.packageName))
+                        onAppItemClicked(launchIntent)
                     }
             ) {
-                val icon = item.loadIcon(packageManager)
+
                 Image(
                     rememberDrawablePainter(drawable = icon),
                     contentDescription = null,
@@ -349,7 +393,7 @@ fun AppListItem(
                 )
                 Spacer(modifier = Modifier.size(16.dp))
                 Text(
-                    text = item.loadLabel(packageManager).toString(),
+                    text = appName,
                     modifier = Modifier,
                     color = Color.White
                 )
