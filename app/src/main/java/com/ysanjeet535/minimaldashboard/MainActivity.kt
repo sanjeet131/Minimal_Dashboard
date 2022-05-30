@@ -18,6 +18,9 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -67,7 +71,7 @@ class MainActivity : ComponentActivity() {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colors.surface)
+                        .background(Color.Black)
                         .clickable(
                             interactionSource = interactionSource,
                             indication = null
@@ -185,25 +189,51 @@ fun MainAppColumn(
     filterQuery: String,
     onAppItemClicked: (Intent?) -> Unit
 ) {
-    LazyColumn(
-        state = listState,
+    Box(
         modifier = Modifier
             .padding(16.dp)
             .height(440.dp)
-            .fillMaxWidth()
+            .fillMaxWidth(),
+        contentAlignment = Alignment.TopStart
     ) {
-        items(items = appList.filter {
-            it.loadLabel(packageManager).toString().contains(filterQuery, ignoreCase = true)
-        }) { item ->
-            AppListItem(
-                item = item,
-                usageStats = usageStats,
-                packageManager = packageManager,
-                onAppItemClicked = onAppItemClicked
-            )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .padding(16.dp)
+                .height(400.dp)
+                .fillMaxWidth()
+        ) {
+            items(items = appList.filter {
+                it.loadLabel(packageManager).toString().contains(filterQuery, ignoreCase = true)
+            }) { item ->
+                AppListItem(
+                    item = item,
+                    usageStats = usageStats,
+                    packageManager = packageManager,
+                    onAppItemClicked = onAppItemClicked
+                )
+            }
         }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .background(
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            Color.Black
+                        )
+                    )
+                )
+                .align(Alignment.BottomCenter)
+        )
+
     }
+
 }
+
 
 @Composable
 fun SearchField(query: TextFieldValue, onQueryChanged: (TextFieldValue) -> Unit) {
@@ -225,7 +255,7 @@ fun SearchField(query: TextFieldValue, onQueryChanged: (TextFieldValue) -> Unit)
     )
 }
 
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun InvisibleAppItemsTray(
     appList: List<ResolveInfo>,
@@ -233,7 +263,9 @@ fun InvisibleAppItemsTray(
     onAppItemClicked: (Intent?) -> Unit
 ) {
     LazyRow {
-        items(appList) { app ->
+        items(
+            appList,
+            key = { it.iconResource.toString() + it.activityInfo.packageName + it.activityInfo.hashCode() }) { app ->
             Image(
                 rememberDrawablePainter(app.loadIcon(packageManager)),
                 contentDescription = null,
@@ -243,6 +275,13 @@ fun InvisibleAppItemsTray(
                     .clickable {
                         onAppItemClicked(packageManager.getLaunchIntentForPackage(app.activityInfo.packageName))
                     }
+                    .animateItemPlacement(
+                        animationSpec = tween(
+                            durationMillis = 300,
+                            easing = FastOutSlowInEasing,
+                            delayMillis = 100
+                        )
+                    )
             )
         }
     }
