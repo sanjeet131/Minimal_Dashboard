@@ -175,6 +175,7 @@ fun AppListContent(
         InvisibleAppItemsTray(
             appList = undiscoveredList,
             packageManager = packageManager,
+            verticalListState = listState,
             onAppItemClicked = onAppItemClicked
         )
     }
@@ -260,9 +261,11 @@ fun SearchField(query: TextFieldValue, onQueryChanged: (TextFieldValue) -> Unit)
 fun InvisibleAppItemsTray(
     appList: List<ResolveInfo>,
     packageManager: PackageManager,
+    verticalListState: LazyListState,
     onAppItemClicked: (Intent?) -> Unit
 ) {
-    LazyRow {
+    val lazyRowState = rememberLazyListState()
+    LazyRow(state = lazyRowState) {
         items(
             appList,
             key = { it.iconResource.toString() + it.activityInfo.packageName + it.activityInfo.hashCode() }) { app ->
@@ -283,6 +286,19 @@ fun InvisibleAppItemsTray(
                         )
                     )
             )
+        }
+    }
+
+    /**
+     * This gives smooth animation on swiping up, need to activate it
+     * with with condition of only scrolling up
+     */
+    val isVerticalScrollingUp = verticalListState.isScrollingUp()
+
+    if (!appList.isNullOrEmpty() and (appList.size > 7)) {
+        LaunchedEffect(appList) {
+            if (isVerticalScrollingUp)
+                lazyRowState.animateScrollToItem(0)
         }
     }
 
@@ -401,4 +417,24 @@ fun DefaultPreview() {
     MinimalDashboardTheme {
 
     }
+}
+
+
+//Utils
+@Composable
+private fun LazyListState.isScrollingUp(): Boolean {
+    var previousIndex by remember(this) { mutableStateOf(firstVisibleItemIndex) }
+    var previousScrollOffset by remember(this) { mutableStateOf(firstVisibleItemScrollOffset) }
+    return remember(this) {
+        derivedStateOf {
+            if (previousIndex != firstVisibleItemIndex) {
+                previousIndex > firstVisibleItemIndex
+            } else {
+                previousScrollOffset >= firstVisibleItemScrollOffset
+            }.also {
+                previousIndex = firstVisibleItemIndex
+                previousScrollOffset = firstVisibleItemScrollOffset
+            }
+        }
+    }.value
 }
