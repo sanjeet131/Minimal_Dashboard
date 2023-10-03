@@ -15,31 +15,36 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Recomposer
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.compositionContext
-import androidx.compose.ui.platform.createLifecycleAwareWindowRecomposer
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.ysanjeet535.minimaldashboard.MainActivity
-import com.ysanjeet535.minimaldashboard.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 
 class ControllerService : Service() {
@@ -48,7 +53,7 @@ class ControllerService : Service() {
     }
 
     private var mWindowManager: WindowManager? = null
-    private var mFloatingView: View? = null
+    private var mFloatingView: ComposeView? = null
 
     private var params: WindowManager.LayoutParams? = null
 
@@ -80,37 +85,47 @@ class ControllerService : Service() {
         //Add the view to the window
         mWindowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
-        val composeView = ComposeView(this)
-        composeView.setContent {
-            Text(text = "Hello", color = androidx.compose.ui.graphics.Color.Black, fontSize = 50.sp,
-                modifier = Modifier.wrapContentSize().background(androidx.compose.ui.graphics.Color.Green))
+        var isExpanded = mutableStateOf(false)
+
+        mFloatingView = ComposeView(this)
+        mFloatingView!!.setContent {
+
+            Text(
+                text = if(isExpanded.value) "Hello" else "Bye", color = androidx.compose.ui.graphics.Color.Black, fontSize = 50.sp,
+                modifier = Modifier
+                    .wrapContentSize()
+                    .background(androidx.compose.ui.graphics.Color.Green)
+
+
+            )
+
+
         }
 
         val lifecycleOwner = MyLifecycleOwner()
         lifecycleOwner.performRestore(null)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-        composeView.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-        composeView.setViewTreeLifecycleOwner(lifecycleOwner)
-        composeView.setViewTreeViewModelStoreOwner(composeView.findViewTreeViewModelStoreOwner())
+        mFloatingView!!.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+        mFloatingView!!.setViewTreeLifecycleOwner(lifecycleOwner)
+        mFloatingView!!.setViewTreeViewModelStoreOwner(mFloatingView!!.findViewTreeViewModelStoreOwner())
 
         val coroutineContext = AndroidUiDispatcher.CurrentThread
         val runRecomposeScope = CoroutineScope(coroutineContext)
         val recomposer = Recomposer(coroutineContext)
-        composeView.compositionContext = recomposer
-        mFloatingView = composeView
+        mFloatingView!!.compositionContext = recomposer
         runRecomposeScope.launch {
             recomposer.runRecomposeAndApplyChanges()
         }
 
 
 
-        mWindowManager!!.addView(composeView, params)
+        mWindowManager!!.addView(mFloatingView, params)
         //Set the close button
 
 
 //        val controllerHandle = mFloatingView?.findViewById(R.id.controller) as ComposeView
 
-        composeView.setOnTouchListener(object : View.OnTouchListener {
+        mFloatingView!!.setOnTouchListener(object : View.OnTouchListener {
             var initialX = 0
             var initialY = 0
             var initialTouchX = 0f
@@ -120,6 +135,7 @@ class ControllerService : Service() {
 
                 when (event?.action) {
                     MotionEvent.ACTION_DOWN -> {
+                        isExpanded.value = !isExpanded.value
                         initialX = params!!.x
                         initialY = params!!.y
                         initialTouchX = event.rawX
@@ -144,24 +160,13 @@ class ControllerService : Service() {
                         params!!.x = initialX + (event.rawX - initialTouchX).toInt()
                         params!!.y = initialY + (event.rawY - initialTouchY).toInt()
                         //Update the layout with new X & Y coordinate
-                        mWindowManager!!.updateViewLayout(composeView, params)
+                        mWindowManager!!.updateViewLayout(mFloatingView, params)
                         return true
                     }
                 }
                 return false
             }
         })
-//        controllerHandle.createLifecycleAwareWindowRecomposer()
-//        controllerHandle.setContent {
-//            Box(modifier = Modifier.fillMaxSize()) {
-//                Box(
-//                    modifier = Modifier.background(
-//                        androidx.compose.ui.graphics.Color.Yellow,
-//                        shape = RectangleShape
-//                    )
-//                )
-//            }
-//        }
     }
 
     override fun onDestroy() {
@@ -191,4 +196,22 @@ class ControllerService : Service() {
             .build()
         startForeground(2, notification)
     }
+}
+
+@Composable
+fun DraggableComponent(content: @Composable () -> Unit) {
+    val offset = remember { mutableStateOf(IntOffset.Zero) }
+    Box(
+        content = { content() },
+        modifier = Modifier
+            .offset { offset.value }
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    val offsetChange =
+                        IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
+                    offset.value = offset.value.plus(offsetChange)
+                }
+            }
+    )
 }
