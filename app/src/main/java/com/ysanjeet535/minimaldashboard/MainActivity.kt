@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
@@ -17,7 +18,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -32,10 +32,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -45,6 +49,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import com.ysanjeet535.minimaldashboard.bubbles.ControllerService
 import com.ysanjeet535.minimaldashboard.ui.theme.MinimalDashboardTheme
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -54,10 +59,16 @@ class MainActivity : ComponentActivity() {
 
     private var usageStats: List<UsageStats>? = null
 
-    @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        if (!Settings.canDrawOverlays(this)) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            startActivityForResult(intent, 1)
+        }
+        startService(Intent(this, ControllerService::class.java))
         val callback: OnBackPressedCallback = object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {}
         }
@@ -255,16 +266,10 @@ fun SearchField(query: TextFieldValue, onQueryChanged: (TextFieldValue) -> Unit)
         leadingIcon = {
             Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = Color.White)
         },
-        colors = TextFieldDefaults.outlinedTextFieldColors(
-            textColor = Color.White,
-            cursorColor = Color.White,
-            focusedBorderColor = Color.White,
-            disabledBorderColor = Color.Transparent
-        )
+        colors = TextFieldDefaults.colors()
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun InvisibleAppItemsTray(
     appList: List<ResolveInfo>,
@@ -292,7 +297,7 @@ fun InvisibleAppItemsTray(
      */
     val isVerticalScrollingUp = verticalListState.isScrollingUp()
 
-    if (!appList.isNullOrEmpty() and (appList.size > 7)) {
+    if (appList.isNotEmpty() and (appList.size > 7)) {
         LaunchedEffect(appList) {
             if (isVerticalScrollingUp)
                 lazyRowState.animateScrollToItem(0)
@@ -336,7 +341,6 @@ fun InvisibleAppItemsTrayItem(
     }
 }
 
-@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun AppListItem(
     item: ResolveInfo,
